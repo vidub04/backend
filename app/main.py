@@ -1,25 +1,31 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy.orm import Session
+from datetime import date
+from app.database import SessionLocal, engine, Base
+from app import models
+
+# Create tables if they don't exist
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-@app.get("/")
-def home():
-    return {"message": "Backend running"}
-from fastapi import Depends
-from sqlalchemy.orm import Session
-from app.database import SessionLocal
-
+# ---------------- Database Dependency ----------------
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
-from app.models import Subject
 
+# ---------------- Home ----------------
+@app.get("/")
+def home():
+    return {"message": "Backend running"}
+
+# ---------------- Subjects ----------------
 @app.post("/subjects")
-def add_subject(name: str, db: Session = Depends(get_db)):
-    subject = Subject(name=name)
+def add_subject(name: str, min_attendance: int = 75, db: Session = Depends(get_db)):
+    subject = models.Subject(name=name, min_attendance=min_attendance)
     db.add(subject)
     db.commit()
     db.refresh(subject)
@@ -27,59 +33,95 @@ def add_subject(name: str, db: Session = Depends(get_db)):
 
 @app.get("/subjects")
 def get_subjects(db: Session = Depends(get_db)):
-    return db.query(Subject).all()
-from datetime import date
-from app.models import Attendance
+    return db.query(models.Subject).all()
 
+# ---------------- Students ----------------
+@app.post("/students")
+def add_student(name: str, email: str, db: Session = Depends(get_db)):
+    student = models.Student(name=name, email=email)
+    db.add(student)
+    db.commit()
+    db.refresh(student)
+    return student
+
+@app.get("/students")
+def get_students(db: Session = Depends(get_db)):
+    return db.query(models.Student).all()
+
+# ---------------- Attendance ----------------
 @app.post("/attendance")
-def mark_attendance(
-    subject_id: int,
-    status: str,
-    db: Session = Depends(get_db)
-):
-    record = Attendance(
+def mark_attendance(student_id: int, subject_id: int, status: str, db: Session = Depends(get_db)):
+    # Validate student and subject
+    student = db.query(models.Student).filter(models.Student.id == student_id).first()
+    subject = db.query(models.Subject).filter(models.Subject.id == subject_id).first()
+    if not student or not subject:
+        raise HTTPException(status_code=404, detail="Student or Subject not found")
+
+    record = models.Attendance(
+        student_id=student_id,
         subject_id=subject_id,
         date=date.today(),
-        status=status
+        status=status.lower()  # "present" or "absent"
     )
     db.add(record)
     db.commit()
     return {"message": "Attendance marked"}
-@app.get("/attendance/summary/{subject_id}")
-def attendance_summary(subject_id: int, db: Session = Depends(get_db)):
-    records = db.query(Attendance).filter(
-        Attendance.subject_id == subject_id
-    ).all()
 
+# ---------------- Subject-wise Attendance for a Student ----------------
+@app.get("/attendance/subjectwise/{student_id}")
+def subjectwise_attendance(student_id: int, db: Session = Depends(get_db)):
+    student = db.query(models.Student).filter(models.Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    subjects = db.query(models.Subject).all()
+    result = []
+
+    for subj in subjects:
+        records = db.query(models.Attendance).filter(
+            models.Attendance.student_id == student_id,
+            models.Attendance.subject_id == subj.id
+        ).all()
+        total = len(records)
+        present = len([r for r in records if r.status == "present"])
+        percent = (present / total * 100) if total > 0 else 0
+        result.append({
+            "subject_id": subj.id,
+            "subject_name": subj.name,
+            "total_classes": total,
+            "present": present,
+            "percentage": round(percent, 2),
+            "safe": percent >= subj.min_attendance
+        })
+
+    return {"student_id": student.id, "student_name": student.name, "subjects": result}
+
+# ---------------- Overall Attendance for a Student ----------------
+@app.get("/attendance/overall/{student_id}")
+def overall_attendance(student_id: int, db: Session = Depends(get_db)):
+    student = db.query(models.Student).filter(models.Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    records = db.query(models.Attendance).filter(models.Attendance.student_id == student_id).all()
     total = len(records)
     present = len([r for r in records if r.status == "present"])
-
-    percentage = (present / total) * 100 if total > 0 else 0
+    percent = (present / total * 100) if total > 0 else 0
 
     return {
+        "student_id": student.id,
+        "student_name": student.name,
         "total_classes": total,
         "present": present,
-        "percentage": round(percentage, 2),
-        "safe": percentage >= 75
-    }
-@app.get("/attendance/overall")
-def overall_attendance(db: Session = Depends(get_db)):
-    records = db.query(Attendance).all()
-    total = len(records)
-    present = len([r for r in records if r.status == "present"])
-
-    percent = (present / total) * 100 if total > 0 else 0
-
-    return {
         "overall_percentage": round(percent, 2),
         "safe": percent >= 75
     }
+
+# ---------------- AI Attendance Advice ----------------
 def attendance_advice(total, present):
     if total == 0:
         return "No classes yet"
-
     percent = (present / total) * 100
-
     if percent >= 75:
         return "You are safe. Maintain this attendance."
     else:
@@ -87,27 +129,18 @@ def attendance_advice(total, present):
         while ((present + required) / (total + required)) * 100 < 75:
             required += 1
         return f"Attend next {required} classes continuously to reach 75%"
-@app.get("/ai/advice")
-@app.get("/ai/advice")
-def ai_advice(db: Session = Depends(get_db)):
-    try:
-        records = db.query(Attendance).all()
 
-        total = len(records)
-        present = sum(1 for r in records if r.status == "present")
-
-        return attendance_advice(total, present)
-
-    except Exception as e:
-        print("AI ERROR 👉", e)
-        return {"error": str(e)}
-
-
-from app.database import engine, Base
-from app import models
-
-Base.metadata.create_all(bind=engine)
-
-
-
-
+@app.get("/ai/advice/{student_id}")
+def ai_advice(student_id: int, db: Session = Depends(get_db)):
+    student = db.query(models.Student).filter(models.Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    records = db.query(models.Attendance).filter(models.Attendance.student_id == student_id).all()
+    total = len(records)
+    present = len([r for r in records if r.status == "present"])
+    advice = attendance_advice(total, present)
+    return {
+        "student_id": student.id,
+        "student_name": student.name,
+        "advice": advice
+    }
