@@ -102,7 +102,5 @@ def ai_advice(db: Session = Depends(get_db)):
         print("AI ERROR 👉", e)
         return {"error": str(e)}
 
-from app.database import engine, Base
-from app import models
-Base.metadata.create_all(bind=engine)
+
 
