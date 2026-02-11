@@ -4,8 +4,14 @@ from datetime import date
 from app.database import SessionLocal, engine, Base
 from app import models
 
-# Create tables if they don't exist
+# Drop all tables (only if you don’t need old data)
+Base.metadata.drop_all(bind=engine)
+
+# Recreate all tables based on updated models
 Base.metadata.create_all(bind=engine)
+print("Tables recreated")
+
+
 
 app = FastAPI()
 
