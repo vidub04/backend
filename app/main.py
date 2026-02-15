@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import date
 from app.database import SessionLocal, engine, Base
 from app import models
+from fastapi.middleware.cors import CORSMiddleware
 
 # Drop all tables (only if you don’t need old data)
 #Base.metadata.drop_all(bind=engine)
@@ -13,20 +14,19 @@ from app import models
 
 app = FastAPI()
 
-from fastapi.middleware.cors import CORSMiddleware
 
 
-origins = [
-    "https://attendance-main-frontend.onrender.com",
-]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=[
+        "https://attendance-main-frontend.onrender.com"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 
