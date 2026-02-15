@@ -75,22 +75,29 @@ def get_students(db: Session = Depends(get_db)):
 
 # ---------------- Attendance ----------------
 @app.post("/attendance")
-def mark_attendance(student_id: int, subject_id: int, status: str, db: Session = Depends(get_db)):
-    # Validate student and subject
+def mark_attendance(
+    student_id: int,
+    subject_id: int,
+    status: str,
+    db: Session = Depends(get_db)
+):
     student = db.query(models.Student).filter(models.Student.id == student_id).first()
     subject = db.query(models.Subject).filter(models.Subject.id == subject_id).first()
+
     if not student or not subject:
         raise HTTPException(status_code=404, detail="Student or Subject not found")
 
     record = models.Attendance(
         student_id=student_id,
         subject_id=subject_id,
-        date=date.today(),
-        status=status.lower()  # "present" or "absent"
+        status=status.lower()
     )
+
     db.add(record)
     db.commit()
+
     return {"message": "Attendance marked"}
+
 
 # ---------------- Subject-wise Attendance for a Student ----------------
 @app.get("/attendance/subjectwise/{student_id}")
