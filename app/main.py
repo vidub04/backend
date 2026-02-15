@@ -11,6 +11,8 @@ from app import models
 #Base.metadata.create_all(bind=engine)
 ##print("Tables recreated")
 
+app = FastAPI()
+
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
@@ -23,7 +25,7 @@ app.add_middleware(
 
 
 
-app = FastAPI()
+
 
 # ---------------- Database Dependency ----------------
 def get_db():
