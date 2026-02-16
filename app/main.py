@@ -6,11 +6,11 @@ from app import models
 from fastapi.middleware.cors import CORSMiddleware
 
 #Drop all tables (only if you don’t need old data)
-Base.metadata.drop_all(bind=engine)
+#Base.metadata.drop_all(bind=engine)
 
 #Recreate all tables based on updated models
-Base.metadata.create_all(bind=engine)
-print("Tables recreated")
+#Base.metadata.create_all(bind=engine)
+#print("Tables recreated")
 
 app = FastAPI()
 
